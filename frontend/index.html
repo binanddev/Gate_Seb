@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Cổng phòng thi · SEB</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#182f35;background:#f1f5f3}*{box-sizing:border-box}body{margin:0}header{padding:20px 5%;display:flex;align-items:center;gap:12px;background:white;border-bottom:1px solid #dce5e0}.mark{background:#136b57;color:white;padding:10px;border-radius:12px;font-weight:800}.brand{font-size:16px;font-weight:700}.sub{font-size:12px;color:#637971;margin-top:3px}main{max-width:780px;margin:8vh auto;padding:0 22px}.eyebrow{color:#136b57;font-size:12px;font-weight:800;letter-spacing:2px}h1{font-size:clamp(28px,5vw,42px);letter-spacing:-1px;line-height:1.2}p{line-height:1.7;color:#536a63}.card{background:white;border:1px solid #dce5e0;border-radius:20px;padding:30px;box-shadow:0 12px 40px #173a2810}.status{display:flex;gap:12px;align-items:center;font-weight:650;line-height:1.5}.dot{width:12px;height:12px;background:#c48c25;border-radius:50%;flex:none}.busy .dot{animation:pulse 1.2s infinite}.ok .dot{background:#188260}.error .dot{background:#bb433c}@keyframes pulse{50%{opacity:.25}}button{border:0;border-radius:10px;background:#136b57;color:white;font:inherit;font-weight:650;padding:13px 20px;cursor:pointer}button:disabled{opacity:.5;cursor:wait}button:focus-visible{outline:3px solid #d99b36;outline-offset:3px}[hidden]{display:none!important}.steps{display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:#74877f;margin:25px 0}.steps span{display:flex;align-items:center;gap:7px}.steps b{border:1px solid #b9ccc0;border-radius:50%;padding:2px 7px}.note{font-size:13px}.exam-bar{display:flex;gap:16px;justify-content:space-between;align-items:center;padding:12px 5%;background:white;border-bottom:1px solid #dce5e0}.exam-bar p{margin:0;font-size:13px}.exam-bar strong{display:block}iframe{width:100%;height:calc(100dvh - 175px);min-height:550px;border:0;background:white}.warning{padding:12px 5%;background:#fff3d8;color:#765719;font-size:14px;line-height:1.5}footer{padding:25px;text-align:center;font-size:12px;color:#74877f}.secondary{background:#e7eeea;color:#244b3d;font-size:13px}.form-help{margin:0;padding:12px 5%;font-size:13px}@media(prefers-reduced-motion:reduce){.busy .dot{animation:none}}
+</style>
+</head>
+<body>
+<header><span class="mark">SEB</span><div><div class="brand">Cổng phòng thi</div><div class="sub">Kết nối · Xác minh · Làm bài</div></div></header>
+<main id="lobby"><div class="eyebrow">SẴN SÀNG CHO KỲ THI</div><h1>Một bước trước<br>khi bắt đầu làm bài.</h1><p>Mở cổng bằng file cấu hình SEB do giáo viên cung cấp. Hệ thống sẽ kết nối máy chủ và kiểm tra cấu hình trước khi mở đề.</p>
+<div class="steps"><span><b>1</b> Kết nối máy chủ</span><span><b>2</b> Xác minh SEB</span><span><b>3</b> Mở bài thi</span></div>
+<section class="card"><div id="state" class="status busy" role="status" aria-live="polite"><span class="dot"></span><span id="message">Đang gọi backend, vui lòng chờ…</span></div><p id="detail">Máy chủ có thể cần một lúc để khởi động. Trang sẽ tự thử lại.</p><button id="retry" hidden>Thử kết nối lại</button></section>
+<p class="note">Giữ trang này mở trong suốt buổi thi. Nếu có thông báo lỗi xác minh, hãy liên hệ giám thị.</p><p id="teacherLink" hidden><a href="teacher.html">Giáo viên: đăng nhập hoặc đăng ký để tạo kỳ thi →</a></p></main>
+<section id="exam" hidden><div class="exam-bar"><div><strong id="examTitle"></strong><p id="connection" role="status" aria-live="polite">Đã kết nối máy chủ</p></div><button class="secondary" id="finish">Tôi đã nộp bài</button></div><div id="warning" class="warning" hidden></div><p class="form-help">Nếu đề không hiển thị hoặc yêu cầu đăng nhập không thực hiện được, hãy báo giám thị. Không tải lại trang khi đang nhập bài.</p><iframe id="form" title="Bài thi Google Forms" referrerpolicy="no-referrer"></iframe></section>
+<footer id="footer">Cổng hỗ trợ xác minh SEB. Câu trả lời được gửi trực tiếp tới Google Forms.</footer>
+<script>
+'use strict';
+// Public address only. Never place a BEK or administrator secret here.
+const API = 'https://gate-for-seb.onrender.com';
+const $ = id => document.getElementById(id);
+let stopped = false, finished = false, timer = null, controller = null, session = null, running = false;
+// Remove BEKs persisted by the previous control panel on this same origin.
+try { localStorage.removeItem('bek'); localStorage.removeItem('testBek'); } catch {}
+const params = new URLSearchParams(location.search);
+const examId = params.get('exam');
+const challenge = params.get('challenge');
+class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
+function state(message, detail, kind = 'busy') { $('message').textContent = message; $('detail').textContent = detail; $('state').className = 'status ' + kind; }
+async function api(path, options = {}) {
+  controller = new AbortController();
+  const current = controller;
+  const timeout = setTimeout(() => current.abort(), 15000);
+  try {
+    const response = await fetch(API + path, {...options, cache:'no-store', credentials:'omit', signal:current.signal});
+    let data;
+    try { data = await response.json(); } catch { throw new ApiError('Máy chủ chưa sẵn sàng.', response.status >= 500 ? response.status : 503); }
+    if (!response.ok) throw new ApiError(data.error || 'Yêu cầu không được chấp nhận.', response.status);
+    return data;
+  } finally { clearTimeout(timeout); if (controller === current) controller = null; }
+}
+function temporary(error) { return !(error instanceof ApiError) || error.status >= 500 || error.status === 429; }
+function readProof() {
+  return new Promise((resolve, reject) => {
+    const security = window.SafeExamBrowser && window.SafeExamBrowser.security;
+    const fail = () => reject(new Error('Vui lòng dùng SEB có hỗ trợ JavaScript API và file cấu hình được giáo viên cung cấp.'));
+    if (!security) { fail(); return; }
+    const timeout = setTimeout(fail, 10000);
+    const done = () => { clearTimeout(timeout); const proof = security.browserExamKey; /^[a-f0-9]{64}$/i.test(proof || '') ? resolve(proof) : fail(); };
+    if (/^[a-f0-9]{64}$/i.test(security.browserExamKey || '')) done();
+    else if (typeof security.updateKeys === 'function') { try { security.updateKeys(done); } catch { clearTimeout(timeout); fail(); } }
+    else { clearTimeout(timeout); fail(); }
+  });
+}
+function schedule(fn, ms) { clearTimeout(timer); if (!stopped) timer = setTimeout(fn, ms); }
+async function start() {
+  if (running || stopped) return;
+  running = true; $('retry').hidden = true;
+  try {
+    if (!examId || !/^[a-zA-Z0-9_-]{1,50}$/.test(examId)) { $('teacherLink').hidden=false; state('Chào mừng đến cổng phòng thi.', 'Giáo viên chọn đăng nhập bên dưới. Học sinh mở file cấu hình SEB giáo viên đã gửi.', 'ok'); return; }
+    state('Đang gọi backend, vui lòng chờ…', 'Máy chủ có thể đang khởi động. Trang sẽ tự thử lại nếu chưa kết nối được.');
+    await api('/api/health');
+    if (stopped) return;
+    if (!challenge) {
+      const data = await api('/api/challenge?exam=' + encodeURIComponent(examId));
+      if (!stopped) location.replace(data.page_url);
+      return;
+    }
+    state('Đang xác minh SEB…', 'Đang đối chiếu phiên bản và cấu hình kỳ thi.');
+    let proof;
+    try { proof = await readProof(); } catch (error) { state('Không thể xác minh SEB.', error.message, 'error'); $('retry').hidden = false; return; }
+    if (stopped) return;
+    const data = await api('/api/verify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({challenge, proof})});
+    if (stopped) return;
+    session = data.session;
+    $('examTitle').textContent = data.title;
+    $('form').src = data.form_url;
+    $('lobby').hidden = true; $('footer').hidden = true; $('exam').hidden = false;
+    schedule(heartbeat, data.heartbeat_seconds * 1000);
+  } catch (error) {
+    if (stopped) return;
+    if (temporary(error)) { state('Đang gọi backend, vui lòng chờ…', 'Chưa kết nối được máy chủ. Tự thử lại sau 8 giây; bạn không cần tải lại trang.'); schedule(start, 8000); }
+    else { state('Chưa thể mở bài thi.', error.message, 'error'); $('retry').hidden = false; }
+  } finally { running = false; }
+}
+async function heartbeat() {
+  if (stopped || !session || running) return;
+  running = true;
+  try {
+    await api('/api/heartbeat', {method:'POST', headers:{Authorization:'Bearer ' + session}});
+    if (stopped) return;
+    $('connection').textContent = 'Kết nối tốt · ' + new Date().toLocaleTimeString('vi-VN');
+    $('warning').hidden = true;
+    schedule(heartbeat, 240000 + Math.random() * 15000);
+  } catch (error) {
+    if (stopped) return;
+    $('warning').hidden = false;
+    if (temporary(error)) {
+      $('connection').textContent = 'Đang gọi backend, vui lòng chờ…';
+      $('warning').textContent = 'Kết nối tới cổng tạm gián đoạn. Đang tự kết nối lại; bài đang mở sẽ không bị tải lại. Hãy kiểm tra thông báo nộp bài của Google Forms.';
+      schedule(heartbeat, 15000 + Math.random() * 5000);
+    } else {
+      $('connection').textContent = 'Phiên cổng không còn hiệu lực';
+      $('warning').textContent = error.message + ' Cổng không thể khóa hoặc xác nhận bài nộp bên trong Google Forms.';
+      session = null;
+    }
+  } finally { running = false; }
+}
+$('retry').addEventListener('click', () => { const url = new URL(location.href); url.search = ''; url.searchParams.set('exam', examId); location.replace(url.href); });
+$('finish').addEventListener('click', () => {
+  if (!confirm('Bạn đã bấm Gửi trong Google Forms và thấy xác nhận nộp bài? Nút này chỉ dừng kết nối với cổng, không nộp bài thay bạn.')) return;
+  stopped = true; finished = true; clearTimeout(timer); if (controller) controller.abort(); session = null;
+  $('connection').textContent = 'Đã dừng kết nối tự động'; $('finish').disabled = true;
+});
+window.addEventListener('pagehide', () => { stopped = true; clearTimeout(timer); if (controller) controller.abort(); });
+window.addEventListener('pageshow', event => { if (event.persisted && !finished) { stopped = false; session ? schedule(heartbeat, 500) : start(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && session && !stopped && !running) schedule(heartbeat, 500); });
+// No service worker or server-side timer: closing this page stops calls.
+start();
+</script></body></html>

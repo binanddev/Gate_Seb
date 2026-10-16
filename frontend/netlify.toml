@@ -1,0 +1,18 @@
+[build]
+  command = "mkdir -p public && cp index.html teacher.html public/"
+  publish = "public"
+
+[[redirects]]
+  from = "/api/teacher/*"
+  to = "https://gate-for-seb.onrender.com/api/teacher/:splat"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Referrer-Policy = "no-referrer"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Cache-Control = "no-store"
+    Content-Security-Policy = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://gate-for-seb.onrender.com; frame-src https://docs.google.com https://accounts.google.com; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
