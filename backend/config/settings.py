@@ -11,10 +11,18 @@ if not SECRET_KEY:
     if not DEBUG:
         raise ImproperlyConfigured('Set DJANGO_SECRET_KEY before starting production.')
     SECRET_KEY = 'local-development-only-do-not-use-in-production'
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5500/').rstrip('/') + '/'
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
+render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
+if render_hostname and render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_hostname)
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5500/' if DEBUG else '').strip()
+if FRONTEND_URL and '://' not in FRONTEND_URL:
+    FRONTEND_URL = 'https://' + FRONTEND_URL
+FRONTEND_URL = FRONTEND_URL.rstrip('/') + '/'
 front = urlsplit(FRONTEND_URL)
-if front.query or front.fragment or (not DEBUG and front.scheme != 'https'):
+if (not front.hostname or front.username or front.password or front.query or front.fragment
+        or front.path != '/' or any(char.isspace() for char in FRONTEND_URL)
+        or front.scheme not in ('http', 'https') or (not DEBUG and front.scheme != 'https')):
     raise ImproperlyConfigured('FRONTEND_URL must be an HTTPS directory URL without query or fragment.')
 CORS_ALLOWED_ORIGINS = [f'{front.scheme}://{front.netloc}']
 CORS_URLS_REGEX = r'^/api/'
@@ -36,11 +44,19 @@ ASGI_APPLICATION = 'config.asgi.application'
 TEMPLATES = [{'BACKEND': 'django.template.backends.django.DjangoTemplates', 'DIRS': [], 'APP_DIRS': True,
               'OPTIONS': {'context_processors': ['django.template.context_processors.request',
                          'django.contrib.auth.context_processors.auth', 'django.contrib.messages.context_processors.messages']}}]
-database_url = os.environ.get('DATABASE_URL')
+database_url = os.environ.get('DATABASE_URL', '').strip()
 if not DEBUG and not database_url:
     raise ImproperlyConfigured('Set DATABASE_URL to persistent PostgreSQL in production.')
-DATABASES = {'default': dj_database_url.parse(database_url, conn_max_age=60) if database_url else
+DATABASES = {'default': dj_database_url.parse(database_url, conn_max_age=0) if database_url else
              {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
+if database_url:
+    db = DATABASES['default']
+    if db['ENGINE'] != 'django.db.backends.postgresql':
+        raise ImproperlyConfigured('DATABASE_URL must be a PostgreSQL connection URL from Neon.')
+    # Compatible with Neon's pooled endpoint and Django ASGI requests.
+    db['DISABLE_SERVER_SIDE_CURSORS'] = True
+    db.setdefault('OPTIONS', {}).setdefault('connect_timeout', 10)
+    db['OPTIONS'].setdefault('sslmode', 'require')
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},

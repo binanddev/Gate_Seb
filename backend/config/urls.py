@@ -6,6 +6,7 @@ from django.conf import settings
 from django.http import FileResponse
 
 urlpatterns = [path('admin/', admin.site.urls), path('api/health', views.health),
+               path('api/live', views.live),
                path('api/challenge', views.challenge), path('api/verify', views.verify),
                path('api/heartbeat', views.heartbeat),
                path('api/teacher/account', teacher.account),

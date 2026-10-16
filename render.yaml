@@ -2,17 +2,17 @@ services:
   - type: web
     name: gate-for-seb
     runtime: python
+    plan: free
+    region: singapore
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
     startCommand: python manage.py migrate --noinput && uvicorn config.asgi:application --host 0.0.0.0 --port $PORT
-    healthCheckPath: /api/health
+    healthCheckPath: /api/live
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.12
       - key: DJANGO_SECRET_KEY
         generateValue: true
-      - key: ALLOWED_HOSTS
-        value: gate-for-seb.onrender.com
       - key: FRONTEND_URL
         sync: false
       - key: DATABASE_URL

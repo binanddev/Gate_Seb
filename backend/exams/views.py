@@ -36,6 +36,12 @@ def read_body(request):
 
 @never_cache
 @require_GET
+def live(request):
+    # Render probes must not continuously wake the free Neon compute.
+    return reply({'status': 'alive'})
+
+@never_cache
+@require_GET
 def health(request):
     # Include database readiness, not merely process liveness.
     Exam.objects.exists()
