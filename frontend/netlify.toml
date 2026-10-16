@@ -4,7 +4,7 @@
 
 [[redirects]]
   from = "/api/teacher/*"
-  to = "https://gate-for-seb.onrender.com/api/teacher/:splat"
+  to = "https://gate-seb.onrender.com/api/teacher/:splat"
   status = 200
   force = true
 
