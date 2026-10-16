@@ -2,9 +2,10 @@
   command = "mkdir -p public && cp index.html teacher.html public/"
   publish = "public"
 
+# Định tuyến toàn bộ API gọi từ frontend (ví dụ: /api/teacher, /api/exams...) về backend Render
 [[redirects]]
-  from = "/api/teacher/*"
-  to = "https://gate-seb.onrender.com/api/teacher/:splat"
+  from = "/api/*"
+  to = "https://gate-seb.onrender.com/api/:splat"
   status = 200
   force = true
 
@@ -15,4 +16,5 @@
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"
     Cache-Control = "no-store"
-    Content-Security-Policy = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://gate-for-seb.onrender.com; frame-src https://docs.google.com https://accounts.google.com; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    # Đã sửa lại URL connect-src thành gate-seb.onrender.com
+    Content-Security-Policy = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://gate-seb.onrender.com; frame-src https://docs.google.com https://accounts.google.com; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
