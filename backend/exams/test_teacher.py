@@ -54,7 +54,7 @@ class TeacherFlowTests(TestCase):
         proof=hashlib.sha256((page+'c'*64).encode()).hexdigest()
         verified=student.post('/api/verify',json.dumps({'challenge':challenge,'proof':proof}),content_type='application/json')
         self.assertEqual(verified.status_code,200)
-        self.assertIn('embedded=true',verified.json()['form_url'])
+        self.assertEqual(verified.json()['form_url'],exam['form_url'])
         self.assertEqual(student.post('/api/heartbeat',HTTP_AUTHORIZATION='Bearer '+verified.json()['session']).status_code,200)
 
     def test_other_teacher_cannot_read_or_change_exam(self):

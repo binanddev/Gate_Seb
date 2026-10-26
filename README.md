@@ -78,17 +78,17 @@ Commit/push để Netlify deploy lại. Không đổi teacher.html sang gọi tr
 3. Tạo kỳ thi nháp trên cổng → lấy Start URL.
 4. Dán Start URL vào SEB Config Tool → hoàn tất cấu hình → lưu `.seb` → lấy **Browser Exam Key**.
 5. Dán BEK vào kỳ thi → bật cho phép vào thi → lưu → gửi file `.seb` cho học sinh.
-6. Học sinh mở file → cổng tự gọi backend → xác minh → mở Form nhúng. Không cần tài khoản cổng; Google có thể yêu cầu đăng nhập theo thiết lập Form.
+6. Học sinh mở file → cổng tự gọi backend → xác minh → chuyển trực tiếp sang Form. Không cần tài khoản cổng; Google có thể yêu cầu đăng nhập theo thiết lập Form.
 
-Mỗi giáo viên chỉ quản lý kỳ thi của mình. Không dùng Config Key thay BEK. Nếu đổi cấu hình SEB, lưu lại và cập nhật BEK. Form cần hỗ trợ nhúng; thử nộp bài bằng SEB thật trước khi thi.
+Mỗi giáo viên chỉ quản lý kỳ thi của mình. Không dùng Config Key thay BEK. Nếu đổi cấu hình SEB, lưu lại và cập nhật BEK. Cho phép URL Google Form và các trang đăng nhập Google cần thiết trong URL filter của SEB; thử chuyển trang và nộp bài bằng SEB thật trước khi thi.
 
 ## Điều cần biết về gói miễn phí
 
 Neon Free có giới hạn lưu trữ/tài nguyên. Compute có thể ngủ rồi tự thức khi có truy vấn, nhưng dữ liệu lưu độc lập với Render. Render Free cũng có thể ngủ; giao diện đã có trạng thái chờ và thử lại. Không có cam kết phục vụ số lượng học sinh bất kỳ: cần thử tải và theo dõi quota Neon.
 
-Heartbeat chỉ chạy khi trang thi còn mở, khoảng 4 phút/lần, dừng khi đóng trang. Heartbeat có truy vấn Neon nên dùng tài nguyên trong buổi thi. Máy ngủ hoặc mất mạng có thể ngắt việc gọi. Không tải lại Form đang điền khi cổng mất kết nối.
+Cổng chỉ xác minh rồi chuyển ngay tới đúng URL Google Form đã lưu bằng điều hướng trang hiện tại. Không dùng iframe, không cần bấm nút mở bài, không thêm embedded=true và giữ nguyên các tham số URL của giáo viên. Khi chuyển đi, mã JavaScript của cổng dừng; không còn heartbeat trong lúc làm bài. Backend có thể ngủ trở lại mà không ảnh hưởng Form đã mở trên Google.
 
-Cổng kiểm tra BEK, không trực tiếp xác minh file EXE trên máy học sinh. Người có link Google Form vẫn có thể vào trực tiếp nếu quyền Google cho phép. Cổng không đọc được kết quả nộp trong iframe. Nút “Tôi đã nộp bài” chỉ dừng heartbeat; học sinh phải bấm Gửi trong Google Forms.
+Cổng vẫn hiển thị chờ và tự thử lại nếu chưa kết nối được backend. Xác minh sai không chuyển trang. Cổng kiểm tra BEK, không trực tiếp kiểm tra EXE và không ngăn truy cập Form bằng URL trực tiếp. Học sinh nộp bài bằng nút Gửi của Google Forms. API heartbeat cũ còn giữ để tương thích, nhưng frontend mới không gọi nữa.
 
 ## Thư mục và chạy cục bộ
 

@@ -18,7 +18,7 @@ function harness({query='?exam=math&challenge=demo', seb=true, fetcher} = {}) {
     fetch:async (url, options)=>{calls.push({url,options});return fetcher ? fetcher(url, options) : response(url);},
     addEventListener:(name,fn)=>listeners[name]=fn};
   function response(url) {
-    const data = url.endsWith('/api/verify') ? {session:'session-token',title:'Toán',form_url:'https://docs.google.com/forms/d/e/demo/viewform?embedded=true',heartbeat_seconds:240} : {status:'ready',page_url:'https://school.netlify.app/?exam=math&challenge=new'};
+    const data = url.endsWith('/api/verify') ? {session:'session-token',title:'Toán',form_url:'https://docs.google.com/forms/d/e/demo/viewform?usp=sharing&entry.123=abc',heartbeat_seconds:240} : {status:'ready',page_url:'https://school.netlify.app/?exam=math&challenge=new'};
     return {ok:true,status:200,json:async()=>data};
   }
   context.window=context;
@@ -29,33 +29,33 @@ function harness({query='?exam=math&challenge=demo', seb=true, fetcher} = {}) {
 async function flush(){for(let i=0;i<30;i++)await Promise.resolve();}
 (async()=>{
   let h=harness();await flush();
-  assert.equal(h.element('form').src.includes('embedded=true'),true);
-  assert.equal([...h.timers.values()].some(t=>t.ms===240000),true);
+  assert.equal(h.context.redirect,'https://docs.google.com/forms/d/e/demo/viewform?usp=sharing&entry.123=abc');
+  assert.equal(h.timers.size,0);
+  assert.equal(h.calls.some(c=>c.url.endsWith('/api/heartbeat')),false);
   h.listeners.pagehide();assert.equal(h.timers.size,0);
 
   h=harness({seb:false});await flush();
-  assert.equal(h.element('form').src,'');assert.match(h.element('message').textContent,/Không thể xác minh/);
+  assert.equal(h.context.redirect,undefined);assert.match(h.element('message').textContent,/Không thể xác minh/);
   assert.equal(h.calls.some(c=>c.url.endsWith('/api/verify')),false);
 
   h=harness({fetcher:async()=>{throw new TypeError('offline');}});await flush();
   assert.match(h.element('message').textContent,/Đang gọi backend/);
   assert.equal([...h.timers.values()].some(t=>t.ms===8000),true);
-  assert.equal(h.element('form').src,'');h.listeners.pagehide();assert.equal(h.timers.size,0);
+  assert.equal(h.context.redirect,undefined);h.listeners.pagehide();assert.equal(h.timers.size,0);
 
   h=harness({fetcher:async()=>({ok:false,status:503,json:async()=>{throw new Error('HTML startup page');}})});await flush();
   assert.match(h.element('message').textContent,/Đang gọi backend/);
 
   h=harness({fetcher:async url=>url.endsWith('/api/verify')?{ok:false,status:403,json:async()=>({error:'Sai cấu hình'})}:{ok:true,status:200,json:async()=>({status:'ready'})}});await flush();
-  assert.equal(h.element('form').src,'');assert.equal(h.element('detail').textContent,'Sai cấu hình');
+  assert.equal(h.context.redirect,undefined);assert.equal(h.element('detail').textContent,'Sai cấu hình');
 
   h=harness({query:'?exam=math'});await flush();
   assert.equal(h.context.redirect,'https://school.netlify.app/?exam=math&challenge=new');
 
-  h=harness();await flush();const form=h.element('form').src;
-  h.context.fetch=async()=>{throw new TypeError('offline');};
-  await vm.runInContext('heartbeat()',h.context);await flush();
-  assert.equal(h.element('form').src,form);assert.equal(h.element('warning').hidden,false);
-  assert.equal([...h.timers.values()].some(t=>t.ms>=15000&&t.ms<20000),true);
-  h.element('finish').click();assert.equal(h.timers.size,0);assert.equal(h.element('finish').disabled,true);
-  console.log('7 frontend scenarios passed: entry, non-SEB, offline, cold start, rejection, challenge, heartbeat/stop.');
+  let resolveVerification;
+  h=harness({fetcher:async url=>url.endsWith('/api/verify')?new Promise(resolve=>{resolveVerification=resolve;}):{ok:true,status:200,json:async()=>({status:'ready'})}});
+  await flush();h.listeners.pagehide();
+  resolveVerification({ok:true,status:200,json:async()=>({form_url:'https://docs.google.com/forms/d/e/demo/viewform'})});
+  await flush();assert.equal(h.context.redirect,undefined);
+  console.log('7 gateway scenarios passed: direct redirect, non-SEB, offline, cold start, rejection, challenge, page closed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

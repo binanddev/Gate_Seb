@@ -2,7 +2,7 @@ import hashlib
 import json
 import re
 import secrets
-from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
+from urllib.parse import urlencode
 from django.conf import settings
 from django.core import signing
 from django.http import JsonResponse
@@ -78,10 +78,7 @@ def verify(request):
         if not matched:
             return failure('SEB hoặc cấu hình không khớp phiên bản được duyệt. Hãy báo giám thị.')
         session = signing.dumps({'exam': exam.slug, 'revision': str(exam.revision)}, salt='seb-session')
-        parts = urlsplit(exam.form_url)
-        query = [(k, v) for k, v in parse_qsl(parts.query) if k != 'embedded'] + [('embedded', 'true')]
-        embedded = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ''))
-        return reply({'title': exam.title, 'form_url': embedded, 'session': session, 'heartbeat_seconds': 240})
+        return reply({'title': exam.title, 'form_url': exam.form_url, 'session': session})
     except signing.SignatureExpired:
         return failure('Phiên xác minh đã hết hạn. Vui lòng thử lại.', 410)
     except (ValueError, TypeError, KeyError, signing.BadSignature):

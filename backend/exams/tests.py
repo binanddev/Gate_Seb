@@ -28,10 +28,10 @@ class GatewayTests(TestCase):
         proof = proof or hashlib.sha256((url + self.key).encode()).hexdigest()
         return self.client.post('/api/verify', data=json.dumps({'challenge': token, 'proof': proof}), content_type='application/json')
 
-    def test_valid_proof_releases_embedded_form_and_session(self):
+    def test_valid_proof_releases_configured_form_and_session(self):
         response = self.verify()
         self.assertEqual(response.status_code, 200)
-        self.assertIn('embedded=true', response.json()['form_url'])
+        self.assertEqual(response.json()['form_url'], self.exam.form_url)
         self.assertNotIn(self.key, response.content.decode())
         self.assertEqual(response['Cache-Control'], 'no-store')
         token = response.json()['session']
