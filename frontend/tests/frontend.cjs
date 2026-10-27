@@ -11,12 +11,12 @@ function harness({query='?exam=math&challenge=demo', seb=true, fetcher} = {}) {
     return elements.get(name);
   };
   const context = {URL, URLSearchParams, AbortController, Date, Math, Promise, Error, console,
-    document:{getElementById:element,hidden:false,addEventListener:(name,fn)=>listeners[name]=fn},
+    document:{readyState:'complete',getElementById:element,hidden:false,addEventListener:(name,fn)=>listeners[name]=fn},
     location:{search:query,href:'https://school.netlify.app/'+query,replace(url){context.redirect=url;}},
     setTimeout(fn, ms){timers.set(++id,{fn,ms});return id;},clearTimeout(id){timers.delete(id);},
     confirm:()=>true,
     fetch:async (url, options)=>{calls.push({url,options});return fetcher ? fetcher(url, options) : response(url);},
-    addEventListener:(name,fn)=>listeners[name]=fn};
+    addEventListener:(name,fn)=>{const old=listeners[name];listeners[name]=old ? (...args)=>{old(...args);fn(...args);} : fn;},removeEventListener:()=>{}};
   function response(url) {
     const data = url.endsWith('/api/verify') ? {session:'session-token',title:'Toán',form_url:'https://docs.google.com/forms/d/e/demo/viewform?usp=sharing&entry.123=abc',heartbeat_seconds:240} : {status:'ready',page_url:'https://school.netlify.app/?exam=math&challenge=new'};
     return {ok:true,status:200,json:async()=>data};
@@ -36,8 +36,32 @@ async function flush(){for(let i=0;i<30;i++)await Promise.resolve();}
   h.listeners.pagehide();assert.equal(h.timers.size,0);
 
   h=harness({seb:false});await flush();
+  [...h.timers.values()].find(t=>t.ms===10000).fn();await flush();
   assert.equal(h.context.redirect,undefined);assert.match(h.element('message').textContent,/Không thể xác minh/);
   assert.equal(h.calls.some(c=>c.url.endsWith('/api/verify')),false);
+
+  // SEB can inject its API after the inline script has already run.
+  h=harness({seb:false});await flush();
+  assert.equal(h.calls.length,0);
+  h.context.SafeExamBrowser={security:{browserExamKey:'b'.repeat(64)}};
+  [...h.timers.values()].find(t=>t.ms===100).fn();await flush();
+  assert.match(h.context.redirect,/docs.google.com/);
+  assert.equal(h.timers.size,0);
+
+  // updateKeys must wait for load and may return asynchronously.
+  h=harness({seb:false});h.context.document.readyState='loading';
+  let callback, updates=0;
+  h.context.SafeExamBrowser={security:{updateKeys(fn){updates++;callback=fn;}}};
+  [...h.timers.values()].find(t=>t.ms===100).fn();await flush();
+  assert.equal(updates,0);
+  h.context.document.readyState='complete';
+  [...h.timers.values()].find(t=>t.ms===100).fn();await flush();
+  assert.equal(updates,1);
+  h.context.SafeExamBrowser.security.browserExamKey='c'.repeat(64);callback();await flush();
+  assert.match(h.context.redirect,/docs.google.com/);assert.equal(h.timers.size,0);
+
+  h=harness({seb:false});await flush();h.listeners.pagehide();await flush();
+  assert.equal(h.timers.size,0);assert.equal(h.calls.length,0);
 
   h=harness({fetcher:async()=>{throw new TypeError('offline');}});await flush();
   assert.match(h.element('message').textContent,/Đang gọi backend/);

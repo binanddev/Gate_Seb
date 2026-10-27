@@ -42,14 +42,39 @@ async function api(path, options = {}) {
 function temporary(error) { return !(error instanceof ApiError) || error.status >= 500 || error.status === 429; }
 function readProof() {
   return new Promise((resolve, reject) => {
-    const security = window.SafeExamBrowser && window.SafeExamBrowser.security;
-    const fail = () => reject(new Error('Vui lòng dùng SEB có hỗ trợ JavaScript API và file cấu hình được giáo viên cung cấp.'));
-    if (!security) { fail(); return; }
-    const timeout = setTimeout(fail, 10000);
-    const done = () => { clearTimeout(timeout); const proof = security.browserExamKey; /^[a-f0-9]{64}$/i.test(proof || '') ? resolve(proof) : fail(); };
-    if (/^[a-f0-9]{64}$/i.test(security.browserExamKey || '')) done();
-    else if (typeof security.updateKeys === 'function') { try { security.updateKeys(done); } catch { clearTimeout(timeout); fail(); } }
-    else { clearTimeout(timeout); fail(); }
+    let poll = null, finished = false, updates = new WeakSet();
+    const finish = (proof, error) => {
+      if (finished) return;
+      finished = true; clearTimeout(poll); clearTimeout(deadline);
+      window.removeEventListener('pagehide', cancel);
+      error ? reject(error) : resolve(proof);
+    };
+    const cancel = () => finish(null, new Error('Trang đã đóng.'));
+    const deadline = setTimeout(() => {
+      const security = window.SafeExamBrowser && window.SafeExamBrowser.security;
+      finish(null, new Error(security
+        ? 'SEB đã được nhận diện nhưng chưa cung cấp mã xác minh. Hãy đóng SEB rồi mở lại file .seb của kỳ thi.'
+        : 'Không đọc được API xác minh của SEB sau 10 giây. Trên Windows cần SEB 3.3.2 trở lên. Hãy mở file .seb bằng Safe Exam Browser, không mở bằng Chrome hoặc Edge.'));
+    }, 10000);
+    const check = () => {
+      if (finished) return;
+      clearTimeout(poll);
+      const security = window.SafeExamBrowser && window.SafeExamBrowser.security;
+      if (security) {
+        const proof = security.browserExamKey;
+        if (/^[a-f0-9]{64}$/i.test(proof || '')) { finish(proof); return; }
+        // Older SEB clients populate the keys asynchronously after page load.
+        if (document.readyState === 'complete' && typeof security.updateKeys === 'function' && !updates.has(security)) {
+          updates.add(security);
+          try { security.updateKeys(check); } catch { /* Continue waiting for injected keys. */ }
+          if (finished) return;
+        }
+      }
+      clearTimeout(poll);
+      poll = setTimeout(check, 100);
+    };
+    window.addEventListener('pagehide', cancel);
+    check();
   });
 }
 function schedule(fn, ms) { clearTimeout(timer); if (!stopped) timer = setTimeout(fn, ms); }
@@ -67,7 +92,7 @@ async function start() {
     }
     state('Đang xác minh SEB…', 'Đang đối chiếu phiên bản và cấu hình kỳ thi.');
     let proof;
-    try { proof = await readProof(); } catch (error) { state('Không thể xác minh SEB.', error.message, 'error'); $('retry').hidden = false; return; }
+    try { proof = await readProof(); } catch (error) { if (stopped) return; state('Không thể xác minh SEB.', error.message, 'error'); $('retry').hidden = false; return; }
     if (stopped) return;
     const data = await api('/api/verify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({challenge, proof})});
     if (stopped) return;
