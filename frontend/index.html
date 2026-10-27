@@ -17,10 +17,9 @@
 <footer id="footer">Cổng hỗ trợ xác minh SEB. Câu trả lời được gửi trực tiếp tới Google Forms.</footer>
 <script>
 'use strict';
-// Public address only. Never place a BEK or administrator secret here.
-const API = 'https://gate-for-seb.onrender.com';
+// All API requests use the Netlify proxy on this page's origin.
 const $ = id => document.getElementById(id);
-let stopped = false, timer = null, controller = null, running = false;
+let stopped = false, timer = null, controller = null, running = false, failures = 0;
 // Remove BEKs persisted by the previous control panel on this same origin.
 try { localStorage.removeItem('bek'); localStorage.removeItem('testBek'); } catch {}
 const params = new URLSearchParams(location.search);
@@ -33,9 +32,9 @@ async function api(path, options = {}) {
   const current = controller;
   const timeout = setTimeout(() => current.abort(), 15000);
   try {
-    const response = await fetch(API + path, {...options, cache:'no-store', credentials:'omit', signal:current.signal});
+    const response = await fetch(path, {...options, cache:'no-store', credentials:'omit', signal:current.signal});
     let data;
-    try { data = await response.json(); } catch { throw new ApiError('Máy chủ chưa sẵn sàng.', response.status >= 500 ? response.status : 503); }
+    try { data = await response.json(); } catch { throw new ApiError(response.status >= 500 ? 'Máy chủ chưa sẵn sàng.' : 'API trả về nội dung không hợp lệ. Hãy kiểm tra proxy /api/* trên Netlify.', response.status >= 500 ? response.status : 422); }
     if (!response.ok) throw new ApiError(data.error || 'Yêu cầu không được chấp nhận.', response.status);
     return data;
   } finally { clearTimeout(timeout); if (controller === current) controller = null; }
@@ -60,10 +59,9 @@ async function start() {
   try {
     if (!examId || !/^[a-zA-Z0-9_-]{1,50}$/.test(examId)) { $('teacherLink').hidden=false; state('Chào mừng đến cổng phòng thi.', 'Giáo viên chọn đăng nhập bên dưới. Học sinh mở file cấu hình SEB giáo viên đã gửi.', 'ok'); return; }
     state('Đang gọi backend, vui lòng chờ…', 'Máy chủ có thể đang khởi động. Trang sẽ tự thử lại nếu chưa kết nối được.');
-    await api('/api/health');
-    if (stopped) return;
     if (!challenge) {
       const data = await api('/api/challenge?exam=' + encodeURIComponent(examId));
+      if (typeof data.page_url !== 'string' || !data.page_url.startsWith('https://') && !data.page_url.startsWith('http://localhost') && !data.page_url.startsWith('http://127.0.0.1')) throw new ApiError('API không trả về URL xác minh hợp lệ.', 422);
       if (!stopped) location.replace(data.page_url);
       return;
     }
@@ -73,13 +71,15 @@ async function start() {
     if (stopped) return;
     const data = await api('/api/verify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({challenge, proof})});
     if (stopped) return;
+    if (typeof data.form_url !== 'string' || !data.form_url.startsWith('https://docs.google.com/forms/')) throw new ApiError('API không trả về link Google Form hợp lệ.', 422);
     state('Xác minh thành công. Đang mở Google Form…', 'Đang chuyển tới bài thi đã được giáo viên cấu hình.', 'ok');
     clearTimeout(timer);
     location.replace(data.form_url);
     stopped = true;
   } catch (error) {
     if (stopped) return;
-    if (temporary(error)) { state('Đang gọi backend, vui lòng chờ…', 'Chưa kết nối được máy chủ. Tự thử lại sau 8 giây; bạn không cần tải lại trang.'); schedule(start, 8000); }
+    if (temporary(error) && ++failures < 6) { state('Đang gọi backend, vui lòng chờ…', `Chưa nhận được phản hồi (lần ${failures}/6). Tự thử lại sau 8 giây.`); schedule(start, 8000); }
+    else if (temporary(error)) { state('Không kết nối được cổng kiểm tra.', 'Đã thử 6 lần. Hãy báo giáo viên kiểm tra proxy Netlify, backend và kết nối mạng.', 'error'); $('retry').hidden = false; }
     else { state('Chưa thể mở bài thi.', error.message, 'error'); $('retry').hidden = false; }
   } finally { running = false; }
 }

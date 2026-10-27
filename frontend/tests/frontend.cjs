@@ -31,6 +31,7 @@ async function flush(){for(let i=0;i<30;i++)await Promise.resolve();}
   let h=harness();await flush();
   assert.equal(h.context.redirect,'https://docs.google.com/forms/d/e/demo/viewform?usp=sharing&entry.123=abc');
   assert.equal(h.timers.size,0);
+  assert.deepEqual(h.calls.map(c=>c.url),['/api/verify']);
   assert.equal(h.calls.some(c=>c.url.endsWith('/api/heartbeat')),false);
   h.listeners.pagehide();assert.equal(h.timers.size,0);
 
@@ -57,5 +58,16 @@ async function flush(){for(let i=0;i<30;i++)await Promise.resolve();}
   await flush();h.listeners.pagehide();
   resolveVerification({ok:true,status:200,json:async()=>({form_url:'https://docs.google.com/forms/d/e/demo/viewform'})});
   await flush();assert.equal(h.context.redirect,undefined);
-  console.log('7 gateway scenarios passed: direct redirect, non-SEB, offline, cold start, rejection, challenge, page closed.');
+  for(const status of [200,404]) {
+    h=harness({fetcher:async()=>({ok:status===200,status,json:async()=>{throw new Error('HTML instead of API');}})});
+    await flush();assert.equal(h.context.redirect,undefined);assert.equal(h.timers.size,0);
+    assert.match(h.element('detail').textContent,/proxy/);
+  }
+  h=harness({fetcher:async()=>({ok:true,status:200,json:async()=>({})})});
+  await flush();assert.equal(h.context.redirect,undefined);assert.equal(h.timers.size,0);
+  h=harness({fetcher:async()=>{throw new TypeError('offline');}});await flush();
+  for(let n=1;n<6;n++) {const [id,timer]=[...h.timers.entries()].find(([,t])=>t.ms===8000);h.timers.delete(id);timer.fn();await flush();}
+  assert.equal(h.timers.size,0);assert.equal(h.element('retry').hidden,false);
+  assert.match(h.element('message').textContent,/Không kết nối/);
+  console.log('Gateway tests passed: same-origin API, immediate redirect, failures, proxy errors, bounded retries.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

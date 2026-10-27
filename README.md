@@ -63,13 +63,11 @@ Giữ nguyên DJANGO_SECRET_KEY hiện có, cập nhật FRONTEND_URL và DATABA
 
 ## Bước 4 — Nối frontend tới backend
 
-Nếu Render cấp đúng `https://gate-for-seb.onrender.com` thì bỏ qua bước sửa URL. Nếu khác, thay URL cũ tại ba vị trí:
+Toàn bộ API của học sinh và giáo viên gọi qua `/api/*` trên cùng miền Netlify. Không cần sửa URL trong HTML. Proxy trong `frontend/netlify.toml` hiện trỏ tới `https://gate-seb.onrender.com/api/:splat`.
 
-1. `frontend/index.html`: hằng `API`.
-2. `frontend/netlify.toml`: đích `to` của proxy `/api/teacher/*`.
-3. `frontend/netlify.toml`: miền backend trong `connect-src`.
+Nếu backend đổi tên miền, chỉ sửa đích `to` của proxy trong `frontend/netlify.toml`, rồi deploy lại Netlify. FRONTEND_URL trên Render phải đúng tên miền Netlify thực tế. Mở `https://TEN-NETLIFY/api/health` để kiểm tra xuyên suốt proxy và database: phải nhận JSON `{"status":"ready"}`, không phải trang HTML.
 
-Commit/push để Netlify deploy lại. Không đổi teacher.html sang gọi trực tiếp Render: trang này dùng proxy cùng miền để đăng nhập ổn định. FRONTEND_URL trên Render phải khớp tên miền Netlify thực tế.
+Cổng gọi thẳng challenge/xác minh, không chờ một lượt health check riêng. Đúng BEK thì chuyển ngay sang URL Form. Lỗi mạng thử tối đa 6 lần; lỗi proxy trả HTML hiển thị thông báo riêng, không giả báo server đang khởi động vô hạn.
 
 ## Bước 5 — Dùng thử
 
@@ -107,7 +105,7 @@ $env:FRONTEND_URL='http://127.0.0.1:8000/'
 .\.venv\Scripts\python.exe backend\manage.py runserver 127.0.0.1:8000
 ```
 
-Để thử SQLite cục bộ, không đặt DATABASE_URL. Trang giáo viên thử tại `http://127.0.0.1:8000/teacher.html`. Nếu thử luồng học sinh cục bộ, đổi API trong bản HTML dùng thử sang localhost rồi hoàn nguyên trước khi push.
+Để thử SQLite cục bộ, không đặt DATABASE_URL. Trang giáo viên thử tại `http://127.0.0.1:8000/teacher.html`. Luồng học sinh cục bộ cũng gọi API cùng miền Django, không cần sửa HTML.
 
 Kiểm thử:
 ```powershell
