@@ -4,7 +4,7 @@
 *{box-sizing:border-box}body{margin:0;background:#f1f5f3;color:#183b30;font:16px system-ui,sans-serif}header{background:white;padding:20px 5%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #d8e3dc}main{max-width:1080px;margin:40px auto;padding:0 20px}h1{font-size:32px;margin-top:0}h2{font-size:22px}p{line-height:1.6;color:#536a63}.card{background:white;border:1px solid #d8e3dc;padding:26px;border-radius:18px;margin-bottom:22px}.auth{max-width:480px;margin:auto}.grid{display:grid;grid-template-columns:1fr 1.5fr;gap:24px}label{display:block;font-weight:600;margin:16px 0 6px}input,textarea{width:100%;font:inherit;border:1px solid #b7cbc0;border-radius:8px;padding:11px}input[type=checkbox]{width:auto}textarea{min-height:110px}button,.button{background:#136b57;color:white;border:0;border-radius:8px;padding:12px 18px;font:inherit;cursor:pointer;text-decoration:none;display:inline-block}button:disabled{opacity:.5;cursor:wait}.secondary{background:#e7eeea;color:#244b3d}.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.muted{font-size:13px;color:#637971}.status{padding:15px 20px;background:#fff4d9;border-radius:10px;margin:0 0 25px;white-space:pre-line}a{color:#136b57}li{line-height:1.7}.item{display:block;width:100%;text-align:left;margin:10px 0;background:#edf4ef;color:#183b30}.item small{display:block;margin-top:6px}.url{background:#f2f6f3;font-family:monospace}button:focus-visible,a:focus-visible{outline:3px solid #d59c32;outline-offset:3px}[hidden]{display:none!important}@media(max-width:760px){.grid{grid-template-columns:1fr}main{margin-top:22px}}
 </style></head><body>
 <header><strong>Cổng SEB · Dành cho giáo viên</strong><a href="/">Cổng học sinh</a></header>
-<main><div id="status" class="status" role="status" aria-live="polite">Đang gọi backend, vui lòng chờ…</div>
+<main><p class="muted">Giữ trang này mở trong giờ thi: trình duyệt tự gọi máy chủ mỗi 4 phút để hạn chế máy chủ ngủ.</p><div id="status" class="status" role="status" aria-live="polite">Đang gọi backend, vui lòng chờ…</div>
 <section id="auth" class="card auth" hidden><h1 id="authTitle">Đăng nhập</h1><p>Quản lý kỳ thi và cấu hình truy cập Google Forms của bạn.</p>
 <form id="authForm"><label for="username">Tên đăng nhập</label><input id="username" autocomplete="username" maxlength="150" required><label for="password">Mật khẩu</label><input id="password" type="password" autocomplete="current-password" required><div id="confirmGroup" hidden><label for="confirmPassword">Nhập lại mật khẩu</label><input id="confirmPassword" type="password" autocomplete="new-password"><p class="muted">Ít nhất 8 ký tự; tránh mật khẩu phổ biến, chỉ có số hoặc giống tên đăng nhập.</p></div><div class="row"><button id="authSubmit">Đăng nhập</button><button id="toggleAuth" class="secondary" type="button">Tạo tài khoản</button></div></form><p class="muted">Tài khoản mới chỉ quản lý kỳ thi do mình tạo, không có quyền quản trị hệ thống. Quên mật khẩu: liên hệ người quản trị cổng.</p></section>
 <section id="dashboard" hidden><div class="row"><h1 id="welcome">Kỳ thi của tôi</h1><button id="logout" class="secondary">Đăng xuất</button></div>
@@ -40,6 +40,28 @@ $('logout').addEventListener('click',()=>action(async()=>{await api('logout',{})
 $('newExam').addEventListener('click',()=>edit(null));
 $('copyUrl').addEventListener('click',()=>action(async()=>{try{await navigator.clipboard.writeText($('startUrl').value);status('Đã sao chép Start URL.');}catch{$('startUrl').select();status('Hãy nhấn Ctrl+C để sao chép Start URL đã chọn.');}}));
 $('examForm').addEventListener('submit',event=>{event.preventDefault();action(async()=>{status('Đang lưu kỳ thi…');const body={title:$('title').value,form_url:$('formUrl').value,browser_exam_keys:$('bek').value,enabled:$('enabled').checked,opens_at:$('opensAt').value?new Date($('opensAt').value).toISOString():'',closes_at:$('closesAt').value?new Date($('closesAt').value).toISOString():''};const result=await api(selected?'exams/'+selected:'exams',body);edit(result.exam);await list();status(result.exam.enabled?'Đã lưu. Học sinh có thể vào theo lịch đã đặt.':'Đã lưu bản nháp. Dùng Start URL cấu hình SEB, lưu file .seb rồi nhập BEK và bật cho phép vào thi.');});});
-window.addEventListener('pagehide',()=>clearTimeout(wakeTimer));
+// Keep Render awake without querying Neon or changing the teacher's session.
+let keepAliveTimer=null, keepAliveController=null, pageClosed=false;
+async function keepAlive(){
+ if(pageClosed || keepAliveController)return;
+ clearTimeout(keepAliveTimer);
+ const current=new AbortController();keepAliveController=current;
+ const timeout=setTimeout(()=>current.abort(),15000);
+ try{await fetch('/api/live',{cache:'no-store',credentials:'omit',signal:current.signal});}
+ catch{/* A background connection failure must not interrupt editing. */}
+ finally{
+  clearTimeout(timeout);
+  if(keepAliveController===current)keepAliveController=null;
+  if(!pageClosed)keepAliveTimer=setTimeout(keepAlive,240000);
+ }
+}
+window.addEventListener('pagehide',()=>{
+ pageClosed=true;clearTimeout(wakeTimer);clearTimeout(keepAliveTimer);
+ if(keepAliveController)keepAliveController.abort();
+});
+window.addEventListener('pageshow',event=>{
+ if(event.persisted){pageClosed=false;keepAlive();}
+});
+keepAlive();
 boot();
 </script></body></html>
